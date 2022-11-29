@@ -1,24 +1,33 @@
 #include <RPLidar.h>
-int rightPin = 50; 
-int leftPin = 48; 
+int rightPin = 27; 
+int leftPin = 26; 
 bool newCycle = false;
 bool commenceMovement = false;
+bool detectedObject = false;
 RPLidar lidar;
 
-int ri1 = 36; 
-int ri2 = 37; 
+int ri1 = 25; 
+int ri2 = 24; 
 int li1 = 22; 
 int li2 = 23;
+
+
+//stepper vars
+#include <Stepper.h>
+const int stepsPerRevolution = 2048;
+const int stepsPerTurn = 256;
+const int rpm = 12;
+
+Stepper stepper1 = Stepper(stepsPerRevolution, 52, 50, 53, 51); //FL and BR
+Stepper stepper2 = Stepper(stepsPerRevolution, 41, 43, 40, 42); //FR and BL
+
+
 
 //Vars for finding closest point
 float closeDist = 0.0f;
 float closeAngle = 0.0f;
 
-#define lr A15
-#define ud A14
 
-int xVal = 0; 
-int yVal = 0; 
 
 #define RPLIDAR_MOTOR 2 // The PWM pin for control the speed of RPLIDAR's motor.
 //                         This pin should connected with the RPLIDAR's MOTOCTRL signal 
@@ -33,6 +42,8 @@ void setup() {
   pinMode(ri2, OUTPUT); 
   pinMode(li1, OUTPUT); 
   pinMode(li2, OUTPUT);
+  stepper1.setSpeed(rpm);
+  stepper2.setSpeed(rpm);
 
   //enable motors 
   digitalWrite(rightPin, HIGH); 
@@ -46,36 +57,10 @@ void setup() {
 
 }
 
-void loop() {
-  xVal = analogRead(lr); 
-  yVal = analogRead(ud); 
+//4.3 SECONDS to do a full 360
 
-//  forward(); 
-//  backward(); 
-//  killAll(); 
-//  delay(500); 
-//  Serial.print("EKS Val: "); 
-//  Serial.println(xVal); 
-//  Serial.print("Y Val: "); 
-//  Serial.println(yVal); 
-//  
-//	//turn on both motors for half a second
-//  if(yVal >= 923){
-//    forward(); 
-////    yVal = analogRead(lr); 
-//  }
-//  if(yVal <= 100){
-//    backward(); 
-////    yVal = analogRead(lr); 
-//  }
-//  if(xVal <= 100  ){
-//    turnLeft(); 
-//  }
-//  if(xVal >= 923){
-//    turnRight(); 
-//  }
-  
-  
+void loop() {
+    
     if (IS_OK(lidar.waitPoint())) {
     float distance = lidar.getCurrentPoint().distance; //distance value in mm unit
     float angle    = lidar.getCurrentPoint().angle; //anglue value in degree
@@ -88,7 +73,9 @@ void loop() {
     //on the first start set newCycle to true for the first time so movement does activate instantly
     //once a new startbit occurs, commencemovement is true and robot will move towards closest point
     if(startBit){
+      detectedObject = false;
       if(newCycle){
+        delay(1000);
         commenceMovement = true;
       }
       newCycle = true;
@@ -98,31 +85,39 @@ void loop() {
     }
 
 
-
     if(commenceMovement){
+      killAll();
       if(closeAngle >= 270){
         turnLeft(convertAngleToSec(closeAngle));
       }
       if(closeAngle <= 90){
         turnRight(convertAngleToSec(closeAngle));
       }
+
+      closeDist = 0.0f;
+      closeAngle = 0.0f;
     }
+
     
-    if(angle <= 11.124f || angle >= 348.876f){
+    if(angle <= 20.3f || angle >= 339.7f){
       if(distance >= 150.0f && distance  <= 500.0f){
+        detectedObject = true;
         if(distance < closeDist){
           
-          if(angle - 2.5f <= 0.0f || angle + 2.5f >= 359){
-            closeAngle = 0.0f;
-          }
-          else{
-             closeAngle = angle;
-          }
+          closeAngle = angle;
           closeDist = distance;
         } 
         
       }
+
     }
+
+//    if(detectedObject){
+//      forward();
+//    }
+//    else{
+//      killAll();
+//    }
  
     
   } else {//if lidar is not currently moving, this will start it up
@@ -140,7 +135,31 @@ void loop() {
     }
   }
   
+
+
+}
+
+
+//if we rotate wheels while turning its better, but we cant do that
+//with current wheel rotation setup
+void setTurnPositionOut(){
+  stepper1.step(stepsPerTurn);
   
+  delay(500);
+  
+  stepper2.step(-stepsPerTurn);
+
+  delay(500);
+}
+
+void setTurnPositionBase(){
+  stepper1.step(-stepsPerTurn);
+  
+  delay(500);
+  
+  stepper2.step(stepsPerTurn);
+
+  delay(500);
 }
 
 void forward(){
@@ -150,23 +169,25 @@ void forward(){
   digitalWrite(ri2, HIGH); 
   digitalWrite(li2, HIGH); 
 
-  delay(50);
+  delay(100);
   killAll(); 
 }
 
-
+//or maybe .0125? 4.3 seconds per a 360 degrees
 float convertAngleToSec(float angle){
-  float seconds = 0.0f;
+  float seconds = 0.0125f;
   if(angle >= 270){
     angle = 360 - angle;
   }
+  
+  
 
   //using our turning speed where moving x seconds moves us y degrees
   //anglesPerSecond * seconds = angleMoved
   //so unknownConstant * seconds = angle
   //seconds = angle/unknownConstant
   
-  return seconds;
+  return seconds * angle * 1000;
 }
 
 void backward(){
@@ -176,30 +197,41 @@ void backward(){
   digitalWrite(ri2, LOW); 
   digitalWrite(li2, LOW);
 
-   delay(50); 
-   killAll(); 
+   delay(100); 
+//   killAll(); 
 }
 
-void turnLeft(){
+void turnLeft(float seconds){
+
+  setTurnPositionOut();
+  
   digitalWrite(ri1, LOW); 
   digitalWrite(li1, HIGH);
 
   digitalWrite(ri2, HIGH);
   digitalWrite(li2, LOW);
   
-  delay(50); 
+  delay(seconds); 
   killAll(); 
+
+  setTurnPositionBase();
 }
 
-void turnRight(){
+void turnRight(float seconds){
+
+  setTurnPositionOut();
+  
   digitalWrite(ri1, HIGH); 
   digitalWrite(li1, LOW);
 
   digitalWrite(ri2, LOW);
   digitalWrite(li2, HIGH);
 
-  delay(50); 
+  delay(seconds); 
   killAll(); 
+
+  setTurnPositionBase();
+  
 }
 
 void killAll(){

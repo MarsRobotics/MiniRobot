@@ -4,12 +4,16 @@ int leftPin = 26;
 bool newCycle = false;
 bool commenceMovement = false;
 bool detectedObject = false;
+bool turningLeft = false;
+bool turningRight = false;
 RPLidar lidar;
 
 int ri1 = 25; 
 int ri2 = 24; 
 int li1 = 22; 
 int li2 = 23;
+
+float margin = 30.0f;
 
 
 //stepper vars
@@ -24,8 +28,8 @@ Stepper stepper2 = Stepper(stepsPerRevolution, 41, 43, 40, 42); //FR and BL
 
 
 //Vars for finding closest point
-float closeDist = 0.0f;
-float closeAngle = 0.0f;
+float closeDist = 20000.0f;
+float closeAngle = 20000.0f;
 
 
 
@@ -75,49 +79,67 @@ void loop() {
     if(startBit){
       detectedObject = false;
       if(newCycle){
-        delay(1000);
-        commenceMovement = true;
+        
+       if((closeAngle <= 12.5f + margin/3 || closeAngle >= 347.5f - margin/3 && closeAngle <= 360.0f) && !turningLeft && !turningRight){ //if object directly infront, move forward
+         forward();
+        }
+       else{ //turn towards object
+         if(closeAngle < 347.5f - margin/3 && closeAngle > 270.0f && !turningLeft){
+           if(turningRight){
+              turningRight = false;
+//              setTurnPositionBase();
+            }
+//           setTurnPositionOut();
+           turningLeft = true;
+          }
+          if(closeAngle > 12.5f + margin/3 && closeAngle < 90.0f && !turningRight){
+            if(turningLeft){
+              turningLeft = false;
+//              setTurnPositionBase();
+            }
+//            setTurnPositionOut();
+            turningRight = true;
+          }
+          if((352.5f <= closeAngle && closeAngle <= 360.0f) || closeAngle <= 7.5f){  //try val <= Var <= val 
+            turningLeft = false;
+            turningRight = false;
+//            setTurnPositionBase();
+          }
+          if(turningLeft){
+            turnLeft();
+          }
+          if(turningRight){
+            turnRight();
+          }
+        } 
+
+        
+        closeDist = 20000.0f;
+        closeAngle = 20000.0f;
       }
       newCycle = true;
     }
-    else{
-      commenceMovement = false;
-    }
-
-
-    if(commenceMovement){
-      killAll();
-      if(closeAngle >= 270){
-        turnLeft(convertAngleToSec(closeAngle));
-      }
-      if(closeAngle <= 90){
-        turnRight(convertAngleToSec(closeAngle));
-      }
-
-      closeDist = 0.0f;
-      closeAngle = 0.0f;
-    }
 
     
-    if(angle <= 20.3f || angle >= 339.7f){
-      if(distance >= 150.0f && distance  <= 500.0f){
+    if(angle <= 20.3f + margin || angle >= 339.7f - margin){ //see if an object is within our range
+      if(distance >= 150.0f && distance  <= 400.0f){
         detectedObject = true;
         if(distance < closeDist){
-          
-          closeAngle = angle;
+          if((closeAngle <= 90.f && closeAngle + 5.0f < angle) || (closeAngle >= 270.0f && closeAngle - 5.0f > angle)){
+                      closeAngle = angle;
+
+          }
           closeDist = distance;
-        } 
-        
+        }  
       }
-
     }
+ 
 
-//    if(detectedObject){
-//      forward();
-//    }
-//    else{
-//      killAll();
-//    }
+    if(!detectedObject){
+      turningRight = false;
+      turningLeft = false;
+      killAll();
+    }
  
     
   } else {//if lidar is not currently moving, this will start it up
@@ -170,7 +192,7 @@ void forward(){
   digitalWrite(li2, HIGH); 
 
   delay(100);
-  killAll(); 
+//  killAll(); 
 }
 
 //or maybe .0125? 4.3 seconds per a 360 degrees
@@ -201,9 +223,7 @@ void backward(){
 //   killAll(); 
 }
 
-void turnLeft(float seconds){
-
-  setTurnPositionOut();
+void turnLeft(){
   
   digitalWrite(ri1, LOW); 
   digitalWrite(li1, HIGH);
@@ -211,15 +231,12 @@ void turnLeft(float seconds){
   digitalWrite(ri2, HIGH);
   digitalWrite(li2, LOW);
   
-  delay(seconds); 
-  killAll(); 
+  delay(100); 
+//  killAll(); 
 
-  setTurnPositionBase();
 }
 
-void turnRight(float seconds){
-
-  setTurnPositionOut();
+void turnRight(){
   
   digitalWrite(ri1, HIGH); 
   digitalWrite(li1, LOW);
@@ -227,10 +244,9 @@ void turnRight(float seconds){
   digitalWrite(ri2, LOW);
   digitalWrite(li2, HIGH);
 
-  delay(seconds); 
-  killAll(); 
+  delay(100); 
+//  killAll(); 
 
-  setTurnPositionBase();
   
 }
 
